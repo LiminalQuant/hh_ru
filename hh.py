@@ -34,7 +34,7 @@ def get_vacancies_df_and_excel(search_text):
 
         data = response.json()
         
-        for vacancy in data["items"]:
+       for vacancy in data["items"]:
             name = vacancy.get("name")
             link = vacancy.get("alternate_url")
         
@@ -61,55 +61,45 @@ def get_vacancies_df_and_excel(search_text):
                     salary_text = int(salary_value)
                     salaries.append(salary_value)
         
-            # ---- ADDRESS ----
+            # === ДОБАВЛЯЕМ ADDRESS (БЕЗ ЛОМКИ СТРУКТУРЫ) ===
             address = vacancy.get("address") or {}
         
-            city = address.get("city")
-            street = address.get("street")
-            building = address.get("building")
             raw_address = address.get("raw")
         
             lat = address.get("lat")
             lng = address.get("lng")
         
             metro = address.get("metro") or {}
-            metro_name = metro.get("station_name")
             metro_lat = metro.get("lat")
             metro_lng = metro.get("lng")
         
-            # fallback: если нет координат адреса — берём метро
-            geo_source = "address"
+            # fallback на метро
             if lat is None and metro_lat is not None:
                 lat = metro_lat
                 lng = metro_lng
-                geo_source = "metro"
         
-            # ---- Excel ----
+            # ---- Excel (РАСШИРЯЕМ, НЕ МЕНЯЕМ) ----
             ws.append([
                 name,
                 employer,
                 area,
                 salary_text,
+                link,
                 raw_address,
                 lat,
-                lng,
-                link
+                lng
             ])
         
-            # ---- DataFrame ----
+            # ---- DataFrame (СОХРАНЯЕМ СТАРЫЕ КЛЮЧИ) ----
             data_list.append({
-                "vacancy_name": name,
-                "employer": employer,
-                "city": area,
-                "salary_rur": salary_text,
+                "Название": name,
+                "Компания": employer,
+                "Город": area,
+                "Зарплата (RUR)": salary_text,
+                "Ссылка": link,
                 "address_raw": raw_address,
-                "street": street,
-                "building": building,
-                "metro": metro_name,
                 "lat": lat,
-                "lng": lng,
-                "geo_source": geo_source,
-                "link": link
+                "lng": lng
             })
 
 
