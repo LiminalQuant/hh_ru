@@ -34,7 +34,7 @@ def get_vacancies_df_and_excel(search_text):
 
         data = response.json()
         
-       for vacancy in data["items"]:
+        for vacancy in data["items"]:
             name = vacancy.get("name")
             link = vacancy.get("alternate_url")
         
