@@ -24,7 +24,7 @@ def get_vacancies_df_and_excel(search_text):
     ws = wb.active
     safe_title = f"Вакансии {search_text}".replace(":", " ").strip()[:31]
     ws.title = safe_title
-    ws.append(['Название', 'Компания', 'Город', 'Зарплата (RUR)', 'Ссылка', "lat", "lng" ])
+    ws.append(['Название', 'Компания', 'Город', 'Зарплата (RUR)', 'Ссылка', 'Адрес', "lat", "lng" ])
 
     while True:
         response = requests.get(base_url, params=params)
