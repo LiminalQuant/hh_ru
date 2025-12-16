@@ -33,40 +33,85 @@ def get_vacancies_df_and_excel(search_text):
             return pd.DataFrame(), None, []
 
         data = response.json()
-
-        for vacancy in data['items']:
-            name = vacancy['name']
-            link = vacancy['alternate_url']
-            employer = vacancy['employer']['name']
-            area = vacancy['area']['name']
-            salary = vacancy['salary']
-
-            salary_text = ''
+        
+        for vacancy in data["items"]:
+            name = vacancy.get("name")
+            link = vacancy.get("alternate_url")
+        
+            employer = vacancy.get("employer", {}).get("name")
+            area = vacancy.get("area", {}).get("name")
+        
+            salary = vacancy.get("salary")
+        
+            salary_text = ""
             salary_value = None
-
-            if salary and salary['currency'] == 'RUR':
-                if salary['from'] and salary['to']:
-                    salary_value = (salary['from'] + salary['to']) / 2
-                elif salary['from']:
-                    salary_value = salary['from']
-                elif salary['to']:
-                    salary_value = salary['to']
-
+        
+            if salary and salary.get("currency") == "RUR":
+                sal_from = salary.get("from")
+                sal_to = salary.get("to")
+        
+                if sal_from and sal_to:
+                    salary_value = (sal_from + sal_to) / 2
+                elif sal_from:
+                    salary_value = sal_from
+                elif sal_to:
+                    salary_value = sal_to
+        
                 if salary_value:
                     salary_text = int(salary_value)
                     salaries.append(salary_value)
-
-            # Excel
-            ws.append([name, employer, area, salary_text, link])
-
-            # DataFrame
+        
+            # ---- ADDRESS ----
+            address = vacancy.get("address") or {}
+        
+            city = address.get("city")
+            street = address.get("street")
+            building = address.get("building")
+            raw_address = address.get("raw")
+        
+            lat = address.get("lat")
+            lng = address.get("lng")
+        
+            metro = address.get("metro") or {}
+            metro_name = metro.get("station_name")
+            metro_lat = metro.get("lat")
+            metro_lng = metro.get("lng")
+        
+            # fallback: если нет координат адреса — берём метро
+            geo_source = "address"
+            if lat is None and metro_lat is not None:
+                lat = metro_lat
+                lng = metro_lng
+                geo_source = "metro"
+        
+            # ---- Excel ----
+            ws.append([
+                name,
+                employer,
+                area,
+                salary_text,
+                raw_address,
+                lat,
+                lng,
+                link
+            ])
+        
+            # ---- DataFrame ----
             data_list.append({
-                "Название": name,
-                "Компания": employer,
-                "Город": area,
-                "Зарплата (RUR)": salary_text,
-                "Ссылка": link
+                "vacancy_name": name,
+                "employer": employer,
+                "city": area,
+                "salary_rur": salary_text,
+                "address_raw": raw_address,
+                "street": street,
+                "building": building,
+                "metro": metro_name,
+                "lat": lat,
+                "lng": lng,
+                "geo_source": geo_source,
+                "link": link
             })
+
 
         params['page'] += 1
         if params['page'] >= data['pages']:
