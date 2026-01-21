@@ -6,46 +6,56 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from io import BytesIO
 
-# 🧩 Получение вакансий и Excel + возврат DataFrame
+# ==============================
+# HH FETCH + NORMALIZATION
+# ==============================
 def get_vacancies_df_and_excel(search_text):
     params = {
-        'text': search_text,
-        'area': 1,  # Москва
-        'per_page': 50,
-        'page': 0
+        "text": search_text,
+        "area": 1,  # Москва
+        "per_page": 50,
+        "page": 0,
     }
 
-    base_url = 'https://api.hh.ru/vacancies'
-    salaries_max = []
-    data_list = []
+    base_url = "https://api.hh.ru/vacancies"
 
-    # Excel-файл
+    rows = []
+    salaries_max = []
+
+    # Excel
     wb = openpyxl.Workbook()
     ws = wb.active
-    safe_title = f"Вакансии {search_text}".replace(":", " ").strip()[:31]
-    ws.title = safe_title
+    ws.title = f"Вакансии {search_text}"[:31]
 
     ws.append([
-        'Название', 'Компания', 'Город',
-        'salary_min', 'salary_max', 'salary_mean',
-        'Ссылка', 'Адрес', 'lat', 'lng'
+        "Название",
+        "Компания",
+        "Город",
+        "salary_min",
+        "salary_max",
+        "salary_mean",
+        "Ссылка",
+        "address_raw",
+        "lat",
+        "lng",
     ])
 
     while True:
-        response = requests.get(base_url, params=params)
-        if response.status_code != 200:
-            st.error("Ошибка запроса к API HeadHunter")
+        resp = requests.get(base_url, params=params)
+        if resp.status_code != 200:
+            st.error("Ошибка API HH")
             return pd.DataFrame(), None, []
 
-        data = response.json()
+        data = resp.json()
 
-        for vacancy in data["items"]:
-            name = vacancy.get("name")
-            link = vacancy.get("alternate_url")
-            employer = vacancy.get("employer", {}).get("name")
-            area = vacancy.get("area", {}).get("name")
+        for v in data["items"]:
+            name = v.get("name")
+            link = v.get("alternate_url")
+            employer = v.get("employer", {}).get("name")
+            area = v.get("area", {}).get("name")
 
-            salary = vacancy.get("salary")
+            # ---------- SALARY ----------
+            salary = v.get("salary")
 
             salary_min = None
             salary_max = None
@@ -60,11 +70,14 @@ def get_vacancies_df_and_excel(search_text):
                 else:
                     salary_mean = salary_min or salary_max
 
+                # ориентир = MAX
                 if salary_max is not None:
                     salaries_max.append(salary_max)
+                elif salary_min is not None:
+                    salaries_max.append(salary_min)
 
-            # === ADDRESS ===
-            address = vacancy.get("address") or {}
+            # ---------- ADDRESS ----------
+            address = v.get("address") or {}
             raw_address = address.get("raw")
 
             lat = address.get("lat")
@@ -75,7 +88,21 @@ def get_vacancies_df_and_excel(search_text):
                 lat = metro.get("lat")
                 lng = metro.get("lng")
 
-            # ---- Excel ----
+            row = {
+                "Название": name,
+                "Компания": employer,
+                "Город": area,
+                "salary_min": salary_min,
+                "salary_max": salary_max,
+                "salary_mean": salary_mean,
+                "Ссылка": link,
+                "address_raw": raw_address,
+                "lat": lat,
+                "lng": lng,
+            }
+
+            rows.append(row)
+
             ws.append([
                 name,
                 employer,
@@ -86,78 +113,112 @@ def get_vacancies_df_and_excel(search_text):
                 link,
                 raw_address,
                 lat,
-                lng
+                lng,
             ])
 
-            # ---- DataFrame ----
-            data_list.append({
-                "Название": name,
-                "Компания": employer,
-                "Город": area,
-                "salary_min": salary_min,
-                "salary_max": salary_max,
-                "salary_mean": salary_mean,
-                "Ссылка": link,
-                "address_raw": raw_address,
-                "lat": lat,
-                "lng": lng
-            })
-
-        params['page'] += 1
-        if params['page'] >= data['pages']:
+        params["page"] += 1
+        if params["page"] >= data["pages"]:
             break
-        time.sleep(0.5)
 
-    # Средняя MAX по всем вакансиям (для справки)
-    if salaries_max:
-        ws.append([])
-        ws.append([
-            'Средняя MAX зарплата:',
-            '', '', '', int(sum(salaries_max) / len(salaries_max)), ''
-        ])
+        time.sleep(0.4)
 
-    # Excel → память
+    # Excel → memory
     output = BytesIO()
     wb.save(output)
     output.seek(0)
 
-    df = pd.DataFrame(data_list)
+    df = pd.DataFrame(rows)
     return df, output, salaries_max
 
 
-# ========== Streamlit UI ==========
-st.set_page_config(page_title="HH вакансии", layout="centered")
-st.title("🔍 HH вакансии — анализ зарплат")
+# ==============================
+# STREAMLIT UI
+# ==============================
+st.set_page_config(page_title="HH зарплаты", layout="centered")
+st.title("🔍 HH — анализ зарплат (MAX / MEAN)")
+
+search_text = st.text_input("Ключевое слово", value="медси")
 
 df = pd.DataFrame()
-salaries_max = []
 excel_file = None
-
-search_input = st.text_input("Введите ключевое слово", value="медси")
+salaries_max = []
 
 if st.button("📥 Получить данные"):
-    with st.spinner("Собираем данные..."):
-        df, excel_file, salaries_max = get_vacancies_df_and_excel(search_input)
+    with st.spinner("Загружаем HH..."):
+        df, excel_file, salaries_max = get_vacancies_df_and_excel(search_text)
 
     if not df.empty:
-        st.success(f"✅ Загружено вакансий: {len(df)}")
+        st.success(f"Загружено вакансий: {len(df)}")
 
+        # ---------- PREVIEW ----------
         st.subheader("📋 Предпросмотр")
-        st.dataframe(df.head(15))
+        st.dataframe(df.head(20))
 
+        # ---------- HIST MAX ----------
         if salaries_max:
             st.subheader("📊 Распределение MAX зарплат")
             fig, ax = plt.subplots()
-            ax.hist(salaries_max, bins=15, edgecolor='black')
+            ax.hist(salaries_max, bins=15, edgecolor="black")
             ax.set_xlabel("MAX зарплата (RUR)")
             ax.set_ylabel("Количество вакансий")
-            ax.set_title("Гистограмма MAX зарплат")
+            ax.set_title("Потолки зарплат")
             st.pyplot(fig)
 
+        # ---------- DOWNLOAD ----------
         st.subheader("📁 Скачать Excel")
         st.download_button(
-            label="📄 Скачать Excel",
+            "📄 Скачать файл",
             data=excel_file,
-            file_name=f"vacancies_{search_input}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            file_name=f"vacancies_{search_text}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
+
+# ==============================
+# ANALYTICS UI — MEAN
+# ==============================
+if not df.empty:
+    st.divider()
+
+    st.subheader("📈 Средняя зарплата по рынку (MEAN)")
+
+    vacancy_filter = st.text_input(
+        "Фильтр по названию вакансии",
+        placeholder="администратор-кассир",
+    )
+
+    if vacancy_filter:
+        filtered = df[
+            df["Название"].str.contains(vacancy_filter, case=False, na=False)
+        ]
+
+        valid_means = filtered["salary_mean"].dropna().astype(float)
+
+        if not valid_means.empty:
+            st.success(
+                f"Средняя по рынку: **{int(valid_means.mean()):,} ₽**"
+                .replace(",", " ")
+            )
+        else:
+            st.info("Зарплаты не указаны.")
+
+    st.subheader("🏢 Средняя зарплата по компании")
+
+    company_filter = st.text_input(
+        "Фильтр по компании",
+        placeholder="МЕДСИ",
+    )
+
+    if company_filter:
+        filtered = df[
+            df["Компания"].str.contains(company_filter, case=False, na=False)
+        ]
+
+        valid_means = filtered["salary_mean"].dropna().astype(float)
+
+        if not valid_means.empty:
+            st.success(
+                f"Средняя по компании: **{int(valid_means.mean()):,} ₽**"
+                .replace(",", " ")
+            )
+        else:
+            st.info("Зарплаты не указаны.")
